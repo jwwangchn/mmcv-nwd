@@ -94,6 +94,8 @@ void modulated_deform_conv_backward(
 
 Tensor nms(Tensor boxes, Tensor scores, float iou_threshold, int offset);
 
+Tensor wassersteinnms(Tensor boxes, Tensor scores, float iou_threshold, int offset);
+
 Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
                float sigma, float min_score, int method, int offset);
 
@@ -291,6 +293,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         py::arg("group"), py::arg("deformable_group"), py::arg("with_bias"));
   m.def("nms", &nms, "nms (CPU/CUDA) ", py::arg("boxes"), py::arg("scores"),
         py::arg("iou_threshold"), py::arg("offset"));
+  m.def("wassersteinnms", &wassersteinnms, "wassersteinnms (CPU/CUDA) ", py::arg("boxes"), py::arg("scores"), py::arg("iou_threshold"), py::arg("offset"));
   m.def("softnms", &softnms, "softnms (CPU) ", py::arg("boxes"),
         py::arg("scores"), py::arg("dets"), py::arg("iou_threshold"),
         py::arg("sigma"), py::arg("min_score"), py::arg("method"),
