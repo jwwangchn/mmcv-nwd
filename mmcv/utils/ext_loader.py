@@ -19,7 +19,7 @@ else:
         'nms', 'softnms', 'nms_match', 'nms_rotated', 'top_pool_forward',
         'top_pool_backward', 'bottom_pool_forward', 'bottom_pool_backward',
         'left_pool_forward', 'left_pool_backward', 'right_pool_forward',
-        'right_pool_backward', 'wassersteinnms'
+        'right_pool_backward', 'wasserstein_nms', 'giou_nms', 'diou_nms', 'ciou_nms'
     ]
 
     def load_ext(name, funcs):

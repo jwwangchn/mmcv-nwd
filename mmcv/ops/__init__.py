@@ -19,7 +19,7 @@ from .masked_conv import MaskedConv2d, masked_conv2d
 from .modulated_deform_conv import (ModulatedDeformConv2d,
                                     ModulatedDeformConv2dPack,
                                     modulated_deform_conv2d)
-from .nms import batched_nms, nms, nms_match, nms_rotated, soft_nms, wassersteinnms
+from .nms import batched_nms, nms, nms_match, nms_rotated, soft_nms, wasserstein_nms, giou_nms, diou_nms, ciou_nms
 from .point_sample import (SimpleRoIAlign, point_sample,
                            rel_roi_point_to_rel_img_point)
 from .psa_mask import PSAMask
@@ -44,5 +44,5 @@ __all__ = [
     'ConvTranspose2d', 'Linear', 'MaxPool2d', 'CrissCrossAttention', 'PSAMask',
     'point_sample', 'rel_roi_point_to_rel_img_point', 'SimpleRoIAlign',
     'SAConv2d', 'TINShift', 'tin_shift', 'box_iou_rotated', 'nms_rotated',
-    'upfirdn2d', 'FusedBiasLeakyReLU', 'fused_bias_leakyrelu', 'wassersteinnms'
+    'upfirdn2d', 'FusedBiasLeakyReLU', 'fused_bias_leakyrelu', 'wasserstein_nms', 'giou_nms', 'diou_nms', 'ciou_nms'
 ]

@@ -7,6 +7,34 @@ Tensor NMSCUDAKernelLauncher(Tensor boxes, Tensor scores, float iou_threshold,
 Tensor nms_cuda(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
   return NMSCUDAKernelLauncher(boxes, scores, iou_threshold, offset);
 }
+
+Tensor WassersteinNMSCUDAKernelLauncher(Tensor boxes, Tensor scores, float iou_threshold,
+                             int offset, float constant);
+
+Tensor wasserstein_nms_cuda(Tensor boxes, Tensor scores, float iou_threshold, int offset, float constant) {
+  return WassersteinNMSCUDAKernelLauncher(boxes, scores, iou_threshold, offset, constant);
+}
+
+Tensor GIoUNMSCUDAKernelLauncher(Tensor boxes, Tensor scores, float iou_threshold,
+                             int offset);
+
+Tensor giou_nms_cuda(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  return GIoUNMSCUDAKernelLauncher(boxes, scores, iou_threshold, offset);
+}
+
+Tensor CIoUNMSCUDAKernelLauncher(Tensor boxes, Tensor scores, float iou_threshold,
+                             int offset);
+
+Tensor ciou_nms_cuda(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  return CIoUNMSCUDAKernelLauncher(boxes, scores, iou_threshold, offset);
+}
+
+Tensor DIoUNMSCUDAKernelLauncher(Tensor boxes, Tensor scores, float iou_threshold,
+                             int offset);
+
+Tensor diou_nms_cuda(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  return DIoUNMSCUDAKernelLauncher(boxes, scores, iou_threshold, offset);
+}
 #endif
 
 Tensor nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
@@ -190,7 +218,7 @@ Tensor softnms(Tensor boxes, Tensor scores, Tensor dets, float iou_threshold,
   }
 }
 
-Tensor wasserstein_nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+Tensor wasserstein_nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int offset, float constant) {
   if (boxes.numel() == 0) {
     return at::empty({0}, boxes.options().dtype(at::kLong));
   }
@@ -248,7 +276,7 @@ Tensor wasserstein_nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int
 
       auto wassersteins = std::sqrt(center_distance + wh_distance);
 
-      auto normalized_wasserstein = std::exp(-wassersteins/12.8);
+      auto normalized_wasserstein = std::exp(-wassersteins/constant);
 
       if (normalized_wasserstein >= iou_threshold) select[_j] = false;
     }
@@ -256,15 +284,304 @@ Tensor wasserstein_nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int
   return order_t.masked_select(select_t);
 }
 
-Tensor wassersteinnms(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+Tensor giou_nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  if (boxes.numel() == 0) {
+    return at::empty({0}, boxes.options().dtype(at::kLong));
+  }
+  auto x1_t = boxes.select(1, 0).contiguous();
+  auto y1_t = boxes.select(1, 1).contiguous();
+  auto x2_t = boxes.select(1, 2).contiguous();
+  auto y2_t = boxes.select(1, 3).contiguous();
+
+  Tensor areas_t = (x2_t - x1_t + offset) * (y2_t - y1_t + offset);
+
+  auto order_t = std::get<1>(scores.sort(0, /* descending=*/true));
+
+  auto nboxes = boxes.size(0);
+  Tensor select_t = at::ones({nboxes}, boxes.options().dtype(at::kBool));
+
+  auto select = select_t.data_ptr<bool>();
+  auto order = order_t.data_ptr<int64_t>();
+  auto x1 = x1_t.data_ptr<float>();
+  auto y1 = y1_t.data_ptr<float>();
+  auto x2 = x2_t.data_ptr<float>();
+  auto y2 = y2_t.data_ptr<float>();
+  auto areas = areas_t.data_ptr<float>();
+
+  for (int64_t _i = 0; _i < nboxes; _i++) {
+    if (select[_i] == false) continue;
+    auto i = order[_i];
+    auto ix1 = x1[i];
+    auto iy1 = y1[i];
+    auto ix2 = x2[i];
+    auto iy2 = y2[i];
+    auto iarea = areas[i];
+
+    for (int64_t _j = _i + 1; _j < nboxes; _j++) {
+      if (select[_j] == false) continue;
+      auto j = order[_j];
+      auto xx1 = std::max(ix1, x1[j]);
+      auto yy1 = std::max(iy1, y1[j]);
+      auto xx2 = std::min(ix2, x2[j]);
+      auto yy2 = std::min(iy2, y2[j]);
+
+      auto enclose_xx1 = std::min(ix1, x1[j]);
+      auto enclose_yy1 = std::min(iy1, y1[j]);
+      auto enclose_xx2 = std::max(ix2, x2[j]);
+      auto enclose_yy2 = std::max(iy2, y2[j]);
+      auto enclose_w = std::max(0.f, enclose_xx2 - enclose_xx1 + offset);
+      auto enclose_h = std::max(0.f, enclose_yy2 - enclose_yy1 + offset);
+      auto enclose_area = enclose_w * enclose_h;
+
+      auto w = std::max(0.f, xx2 - xx1 + offset);
+      auto h = std::max(0.f, yy2 - yy1 + offset);
+      auto inter = w * h;
+      auto ovr = inter / (iarea + areas[j] - inter);
+      auto giou = ovr - (enclose_area - (iarea + areas[j] - inter)) / enclose_area;
+      if (giou >= iou_threshold) select[_j] = false;
+    }
+  }
+  return order_t.masked_select(select_t);
+}
+
+Tensor diou_nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  if (boxes.numel() == 0) {
+    return at::empty({0}, boxes.options().dtype(at::kLong));
+  }
+  auto x1_t = boxes.select(1, 0).contiguous();
+  auto y1_t = boxes.select(1, 1).contiguous();
+  auto x2_t = boxes.select(1, 2).contiguous();
+  auto y2_t = boxes.select(1, 3).contiguous();
+
+  Tensor areas_t = (x2_t - x1_t + offset) * (y2_t - y1_t + offset);
+
+  auto order_t = std::get<1>(scores.sort(0, /* descending=*/true));
+
+  auto nboxes = boxes.size(0);
+  Tensor select_t = at::ones({nboxes}, boxes.options().dtype(at::kBool));
+
+  auto select = select_t.data_ptr<bool>();
+  auto order = order_t.data_ptr<int64_t>();
+  auto x1 = x1_t.data_ptr<float>();
+  auto y1 = y1_t.data_ptr<float>();
+  auto x2 = x2_t.data_ptr<float>();
+  auto y2 = y2_t.data_ptr<float>();
+  auto areas = areas_t.data_ptr<float>();
+
+  for (int64_t _i = 0; _i < nboxes; _i++) {
+    if (select[_i] == false) continue;
+    auto i = order[_i];
+    auto ix1 = x1[i];
+    auto iy1 = y1[i];
+    auto ix2 = x2[i];
+    auto iy2 = y2[i];
+    auto iarea = areas[i];
+
+    for (int64_t _j = _i + 1; _j < nboxes; _j++) {
+      if (select[_j] == false) continue;
+      auto j = order[_j];
+      auto xx1 = std::max(ix1, x1[j]);
+      auto yy1 = std::max(iy1, y1[j]);
+      auto xx2 = std::min(ix2, x2[j]);
+      auto yy2 = std::min(iy2, y2[j]);
+
+      auto enclose_xx1 = std::min(ix1, x1[j]);
+      auto enclose_yy1 = std::min(iy1, y1[j]);
+      auto enclose_xx2 = std::max(ix2, x2[j]);
+      auto enclose_yy2 = std::max(iy2, y2[j]);
+
+      auto enclose_w = std::max(0.f, enclose_xx2 - enclose_xx1 + offset);
+      auto enclose_h = std::max(0.f, enclose_yy2 - enclose_yy1 + offset);
+
+      auto enclosed_diagonal_distances = enclose_w * enclose_w + enclose_h * enclose_h;
+
+      auto center1_x = (ix1 + ix2) / 2;
+      auto center1_y = (iy1 + iy2) / 2;
+      auto center2_x = (x1[j] + x2[j]) / 2;
+      auto center2_y = (y1[j] + y2[j]) / 2;
+
+      auto center_distance = (center2_x - center1_x) * (center2_x - center1_x) + (center2_y - center1_y) * (center2_y - center1_y);
+
+      auto w = std::max(0.f, xx2 - xx1 + offset);
+      auto h = std::max(0.f, yy2 - yy1 + offset);
+      auto inter = w * h;
+      auto ovr = inter / (iarea + areas[j] - inter);
+
+      auto diou = ovr - center_distance / enclosed_diagonal_distances;
+      
+      if (diou < -1.0)
+      {
+        diou = -1.0;
+      } 
+      else if (diou > 1.0)
+      {
+        diou = 1.0;
+      else
+      {
+        diou = diou;
+      }
+
+      if (diou >= iou_threshold) select[_j] = false;
+    }
+  }
+  return order_t.masked_select(select_t);
+}
+
+Tensor ciou_nms_cpu(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  if (boxes.numel() == 0) {
+    return at::empty({0}, boxes.options().dtype(at::kLong));
+  }
+  auto x1_t = boxes.select(1, 0).contiguous();
+  auto y1_t = boxes.select(1, 1).contiguous();
+  auto x2_t = boxes.select(1, 2).contiguous();
+  auto y2_t = boxes.select(1, 3).contiguous();
+
+  Tensor areas_t = (x2_t - x1_t + offset) * (y2_t - y1_t + offset);
+
+  auto order_t = std::get<1>(scores.sort(0, /* descending=*/true));
+
+  auto nboxes = boxes.size(0);
+  Tensor select_t = at::ones({nboxes}, boxes.options().dtype(at::kBool));
+
+  auto select = select_t.data_ptr<bool>();
+  auto order = order_t.data_ptr<int64_t>();
+  auto x1 = x1_t.data_ptr<float>();
+  auto y1 = y1_t.data_ptr<float>();
+  auto x2 = x2_t.data_ptr<float>();
+  auto y2 = y2_t.data_ptr<float>();
+  auto areas = areas_t.data_ptr<float>();
+
+  for (int64_t _i = 0; _i < nboxes; _i++) {
+    if (select[_i] == false) continue;
+    auto i = order[_i];
+    auto ix1 = x1[i];
+    auto iy1 = y1[i];
+    auto ix2 = x2[i];
+    auto iy2 = y2[i];
+    auto iarea = areas[i];
+
+    for (int64_t _j = _i + 1; _j < nboxes; _j++) {
+      if (select[_j] == false) continue;
+      auto j = order[_j];
+      auto xx1 = std::max(ix1, x1[j]);
+      auto yy1 = std::max(iy1, y1[j]);
+      auto xx2 = std::min(ix2, x2[j]);
+      auto yy2 = std::min(iy2, y2[j]);
+
+      auto enclose_xx1 = std::min(ix1, x1[j]);
+      auto enclose_yy1 = std::min(iy1, y1[j]);
+      auto enclose_xx2 = std::max(ix2, x2[j]);
+      auto enclose_yy2 = std::max(iy2, y2[j]);
+
+      auto enclose_w = std::max(0.f, enclose_xx2 - enclose_xx1 + offset);
+      auto enclose_h = std::max(0.f, enclose_yy2 - enclose_yy1 + offset);
+
+      auto enclosed_diagonal_distances = enclose_w * enclose_w + enclose_h * enclose_h;
+
+      auto center1_x = (ix1 + ix2) / 2;
+      auto center1_y = (iy1 + iy2) / 2;
+      auto center2_x = (x1[j] + x2[j]) / 2;
+      auto center2_y = (y1[j] + y2[j]) / 2;
+
+      auto center_distance = (center2_x - center1_x) * (center2_x - center1_x) + (center2_y - center1_y) * (center2_y - center1_y);
+
+      auto w = std::max(0.f, xx2 - xx1 + offset);
+      auto h = std::max(0.f, yy2 - yy1 + offset);
+      auto inter = w * h;
+      auto ovr = inter / (iarea + areas[j] - inter);
+
+      auto h1 = iy2 - iy1 + offset;
+      auto w1 = ix2 - ix1 + offset;
+      auto h2 = y2[j] - y1[j] + offset;
+      auto w2 = x2[j] - x1[j] + offset;
+
+      auto factor = 4 / (3.1415 * 3.1415);
+      auto v = factor * std::pow(std::atan(w2 / h2) - std::atan(w1 / h1), 2);
+
+      auto ciou = ovr - (center_distance / enclosed_diagonal_distances + v * v / (1 - ovr + v));
+
+      if (ciou < -1.0)
+      {
+        ciou = -1.0;
+      } 
+      else if (ciou > 1.0)
+      {
+        ciou = 1.0;
+      else
+      {
+        ciou = ciou;
+      }
+
+      if (ciou >= iou_threshold) select[_j] = false;
+    }
+  }
+  return order_t.masked_select(select_t);
+}
+
+Tensor wasserstein_nms(Tensor boxes, Tensor scores, float iou_threshold, int offset, float constant) {
   if (boxes.device().is_cuda()) {
-    AT_ERROR("wassersteinnms is not implemented on GPU");
+#ifdef MMCV_WITH_CUDA
+    CHECK_CUDA_INPUT(boxes);
+    CHECK_CUDA_INPUT(scores);
+    return wasserstein_nms_cuda(boxes, scores, iou_threshold, offset, constant);
+#else
+    AT_ERROR("wasserstein_nms is not compiled with GPU support");
+#endif
   } else {
     CHECK_CPU_INPUT(boxes);
     CHECK_CPU_INPUT(scores);
-    return wasserstein_nms_cpu(boxes, scores, iou_threshold, offset);
+    return wasserstein_nms_cpu(boxes, scores, iou_threshold, offset, constant);
   }
 }
+
+Tensor giou_nms(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  if (boxes.device().is_cuda()) {
+#ifdef MMCV_WITH_CUDA
+    CHECK_CUDA_INPUT(boxes);
+    CHECK_CUDA_INPUT(scores);
+    return giou_nms_cuda(boxes, scores, iou_threshold, offset);
+#else
+    AT_ERROR("giou_nms is not compiled with GPU support");
+#endif
+  } else {
+    CHECK_CPU_INPUT(boxes);
+    CHECK_CPU_INPUT(scores);
+    return giou_nms_cpu(boxes, scores, iou_threshold, offset);
+  }
+}
+
+Tensor diou_nms(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  if (boxes.device().is_cuda()) {
+#ifdef MMCV_WITH_CUDA
+    CHECK_CUDA_INPUT(boxes);
+    CHECK_CUDA_INPUT(scores);
+    return diou_nms_cuda(boxes, scores, iou_threshold, offset);
+#else
+    AT_ERROR("diou_nms is not compiled with GPU support");
+#endif
+  } else {
+    CHECK_CPU_INPUT(boxes);
+    CHECK_CPU_INPUT(scores);
+    return diou_nms_cpu(boxes, scores, iou_threshold, offset);
+  }
+}
+
+Tensor ciou_nms(Tensor boxes, Tensor scores, float iou_threshold, int offset) {
+  if (boxes.device().is_cuda()) {
+#ifdef MMCV_WITH_CUDA
+    CHECK_CUDA_INPUT(boxes);
+    CHECK_CUDA_INPUT(scores);
+    return ciou_nms_cuda(boxes, scores, iou_threshold, offset);
+#else
+    AT_ERROR("ciou_nms is not compiled with GPU support");
+#endif
+  } else {
+    CHECK_CPU_INPUT(boxes);
+    CHECK_CPU_INPUT(scores);
+    return ciou_nms_cpu(boxes, scores, iou_threshold, offset);
+  }
+}
+
 
 std::vector<std::vector<int> > nms_match_cpu(Tensor dets, float iou_threshold) {
   auto x1_t = dets.select(1, 0).contiguous();
