@@ -119,7 +119,7 @@ def adjust_color(img, alpha=1, beta=None, gamma=0):
         beta = 1 - alpha
     colored_img = cv2.addWeighted(img, alpha, gray_img, beta, gamma)
     if not colored_img.dtype == np.uint8:
-        # Note when the dtype of `img` is not defaultly `np.uint8`
+        # Note when the dtype of `img` is not the default `np.uint8`
         # (e.g. np.float32), the value in `colored_img` got from cv2
         # is not guaranteed to be in range [0, 255], so here clip
         # is needed.
@@ -320,9 +320,9 @@ def adjust_sharpness(img, factor=1., kernel=None):
         # adopted from PIL.ImageFilter.SMOOTH
         kernel = np.array([[1., 1., 1.], [1., 5., 1.], [1., 1., 1.]]) / 13
     assert isinstance(kernel, np.ndarray), \
-        f'kernel must be of type np.ndarrray, but got {type(kernel)} instead.'
+        f'kernel must be of type np.ndarray, but got {type(kernel)} instead.'
     assert kernel.ndim == 2, \
-        f'kernel must have a dimention of 2, but got {kernel.ndim} instead.'
+        f'kernel must have a dimension of 2, but got {kernel.ndim} instead.'
 
     degenerated = cv2.filter2D(img, -1, kernel)
     sharpened_img = cv2.addWeighted(
@@ -330,6 +330,49 @@ def adjust_sharpness(img, factor=1., kernel=None):
         1 - factor, 0)
     sharpened_img = np.clip(sharpened_img, 0, 255)
     return sharpened_img.astype(img.dtype)
+
+
+def adjust_lighting(img, eigval, eigvec, alphastd=0.1, to_rgb=True):
+    """AlexNet-style PCA jitter.
+
+    This data augmentation is proposed in `ImageNet Classification with Deep
+    Convolutional Neural Networks
+    <https://dl.acm.org/doi/pdf/10.1145/3065386>`_.
+
+    Args:
+        img (ndarray): Image to be adjusted lighting. BGR order.
+        eigval (ndarray): the eigenvalue of the convariance matrix of pixel
+            values, respectively.
+        eigvec (ndarray): the eigenvector of the convariance matrix of pixel
+            values, respectively.
+        alphastd (float): The standard deviation for distribution of alpha.
+            Defaults to 0.1
+        to_rgb (bool): Whether to convert img to rgb.
+
+    Returns:
+        ndarray: The adjusted image.
+    """
+    assert isinstance(eigval, np.ndarray) and isinstance(eigvec, np.ndarray), \
+        f'eigval and eigvec should both be of type np.ndarray, got ' \
+        f'{type(eigval)} and {type(eigvec)} instead.'
+
+    assert eigval.ndim == 1 and eigvec.ndim == 2
+    assert eigvec.shape == (3, eigval.shape[0])
+    n_eigval = eigval.shape[0]
+    assert isinstance(alphastd, float), 'alphastd should be of type float, ' \
+        f'got {type(alphastd)} instead.'
+
+    img = img.copy().astype(np.float32)
+    if to_rgb:
+        cv2.cvtColor(img, cv2.COLOR_BGR2RGB, img)  # inplace
+
+    alpha = np.random.normal(0, alphastd, n_eigval)
+    alter = eigvec \
+        * np.broadcast_to(alpha.reshape(1, n_eigval), (3, n_eigval)) \
+        * np.broadcast_to(eigval.reshape(1, n_eigval), (3, n_eigval))
+    alter = np.broadcast_to(alter.sum(axis=1).reshape(1, 1, 3), img.shape)
+    img_adjusted = img + alter
+    return img_adjusted
 
 
 def lut_transform(img, lut_table):

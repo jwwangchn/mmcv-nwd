@@ -10,15 +10,16 @@
 
 MMCV 是一个面向计算机视觉的基础库，它支持了很多开源项目，例如：
 
-- [MMCV](https://github.com/open-mmlab/mmcv): 计算机视觉基础库
-- [MMClassification](https://github.com/open-mmlab/mmclassification): 图像分类工具箱
-- [MMDetection](https://github.com/open-mmlab/mmdetection): 目标检测工具箱
-- [MMDetection3D](https://github.com/open-mmlab/mmdetection3d): 新一代通用 3D 目标检测平台
-- [MMSegmentation](https://github.com/open-mmlab/mmsegmentation): 语义分割工具箱
-- [MMAction2](https://github.com/open-mmlab/mmaction2): 新一代视频理解工具箱
-- [MMTracking](https://github.com/open-mmlab/mmtracking): 一体化视频目标感知平台
-- [MMPose](https://github.com/open-mmlab/mmpose): 姿态估计工具箱
-- [MMEditing](https://github.com/open-mmlab/mmediting): 图像视频编辑工具箱
+- [MMClassification](https://github.com/open-mmlab/mmclassification): OpenMMLab 图像分类工具箱
+- [MMDetection](https://github.com/open-mmlab/mmdetection): OpenMMLab 目标检测工具箱
+- [MMDetection3D](https://github.com/open-mmlab/mmdetection3d): OpenMMLab 新一代通用 3D 目标检测平台
+- [MMSegmentation](https://github.com/open-mmlab/mmsegmentation): OpenMMLab 语义分割工具箱
+- [MMAction2](https://github.com/open-mmlab/mmaction2): OpenMMLab 新一代视频理解工具箱
+- [MMTracking](https://github.com/open-mmlab/mmtracking): OpenMMLab 一体化视频目标感知平台
+- [MMPose](https://github.com/open-mmlab/mmpose): OpenMMLab 姿态估计工具箱
+- [MMEditing](https://github.com/open-mmlab/mmediting): OpenMMLab 图像视频编辑工具箱
+- [MMOCR](https://github.com/open-mmlab/mmocr): OpenMMLab 全流程文字检测识别理解工具包
+- [MMGeneration](https://github.com/open-mmlab/mmgeneration): OpenMMLab 图片视频生成模型工具箱
 
 MMCV 提供了如下众多功能：
 
@@ -38,18 +39,12 @@ MMCV 提供了如下众多功能：
 
 MMCV 有两个版本：
 
-- **mmcv**: 精简版，不包含 CUDA 算子但包含其余所有特性和功能，类似 MMCV 1.0 之前的版本。如果你不需要使用 CUDA 算子的话，精简版可以作为一个考虑选项。
 - **mmcv-full**: 完整版，包含所有的特性以及丰富的开箱即用的 CUDA 算子。注意完整版本可能需要更长时间来编译。
+- **mmcv**: 精简版，不包含 CUDA 算子但包含其余所有特性和功能，类似 MMCV 1.0 之前的版本。如果你不需要使用 CUDA 算子的话，精简版可以作为一个考虑选项。
 
-**注意**: 请不要在同一个环境中安装两个版本，否则可能会遇到类似 `ModuleNotFound` 的错误。在安装一个版本之前，需要先卸载另一个。
+**注意**: 请不要在同一个环境中安装两个版本，否则可能会遇到类似 `ModuleNotFound` 的错误。在安装一个版本之前，需要先卸载另一个。`如果CUDA可用，强烈推荐安装mmcv-full`。
 
-a. 安装精简版
-
-```python
-pip install mmcv
-```
-
-b. 安装完整版
+a. 安装完整版
 
 在安装 mmcv-full 之前，请确保 PyTorch 已经成功安装在环境中，可以参考 PyTorch 官方[文档](https://pytorch.org/)。
 
@@ -92,6 +87,7 @@ pip install mmcv-full==1.2.2 -f https://download.openmmlab.com/mmcv/dist/cu110/t
   <tbody>
     <tr>
       <th width="80"> CUDA </th>
+      <th valign="bottom" align="left" width="100">torch 1.8</th>
       <th valign="bottom" align="left" width="100">torch 1.7</th>
       <th valign="bottom" align="left" width="100">torch 1.6</th>
       <th valign="bottom" align="left" width="100">torch 1.5</th>
@@ -99,7 +95,17 @@ pip install mmcv-full==1.2.2 -f https://download.openmmlab.com/mmcv/dist/cu110/t
       <th valign="bottom" align="left" width="100">torch 1.3</th>
     </tr>
     <tr>
+      <td align="left">11.1</td>
+      <td align="left"><details><summary> 安装 </summary><pre><code>pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu111/torch1.8.0/index.html</code></pre> </details> </td>
+      <td align="left"> </td>
+      <td align="left"> </td>
+      <td align="left"> </td>
+      <td align="left"> </td>
+      <td align="left"> </td>
+    </tr>
+    <tr>
       <td align="left">11.0</td>
+      <td align="left"> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code>pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu110/torch1.7.0/index.html</code></pre> </details> </td>
       <td align="left"> </td>
       <td align="left"> </td>
@@ -108,6 +114,7 @@ pip install mmcv-full==1.2.2 -f https://download.openmmlab.com/mmcv/dist/cu110/t
     </tr>
     <tr>
       <td align="left">10.2</td>
+      <td align="left"><details><summary> 安装 </summary><pre><code>pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu102/torch1.8.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code>pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu102/torch1.7.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code>pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu102/torch1.6.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code>pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu102/torch1.5.0/index.html</code></pre> </details> </td>
@@ -116,6 +123,7 @@ pip install mmcv-full==1.2.2 -f https://download.openmmlab.com/mmcv/dist/cu110/t
     </tr>
     <tr>
       <td align="left">10.1</td>
+      <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.8.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.7.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.6.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.5.0/index.html</code></pre> </details> </td>
@@ -124,6 +132,7 @@ pip install mmcv-full==1.2.2 -f https://download.openmmlab.com/mmcv/dist/cu110/t
     </tr>
     <tr>
       <td align="left">9.2</td>
+      <td align="left"> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu92/torch1.7.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu92/torch1.6.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cu92/torch1.5.0/index.html</code></pre> </details> </td>
@@ -132,6 +141,7 @@ pip install mmcv-full==1.2.2 -f https://download.openmmlab.com/mmcv/dist/cu110/t
     </tr>
     <tr>
       <td align="left">cpu</td>
+       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cpu/torch1.8.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cpu/torch1.7.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cpu/torch1.6.0/index.html</code></pre> </details> </td>
       <td align="left"><details><summary> 安装 </summary><pre><code> pip install mmcv-full=={mmcv_version} -f https://download.openmmlab.com/mmcv/dist/cpu/torch1.5.0/index.html</code></pre> </details> </td>
@@ -149,6 +159,12 @@ pip install mmcv-full
 
 但注意本地编译可能会耗时 10 分钟以上。
 
+b. 安装精简版
+
+```python
+pip install mmcv
+```
+
 c. 安装完整版并且编译 onnxruntime 的自定义算子
 
 - 详细的指南请查看 [这里](docs/onnxruntime_op.md)。
@@ -162,3 +178,25 @@ c. 安装完整版并且编译 onnxruntime 的自定义算子
 ## 贡献指南
 
 我们感谢所有的贡献者为改进和提升 MMCV 所作出的努力。请参考[贡献指南](CONTRIBUTING.md)来了解参与项目贡献的相关指引。
+
+## 许可证
+
+`MMCV` 目前以 Apache 2.0 的许可证发布，但是其中有一部分功能并不是使用的 Apache2.0 许可证，我们在 [许可证](LICENSES.md) 中详细地列出了这些功能以及他们对应的许可证，如果您正在从事盈利性活动，请谨慎参考此文档。
+## 欢迎加入 OpenMMLab 社区
+
+扫描下方的二维码可关注 OpenMMLab 团队的 [知乎官方账号](https://www.zhihu.com/people/openmmlab)，加入 OpenMMLab 团队的 [官方交流 QQ 群](https://jq.qq.com/?_wv=1027&k=aCvMxdr3)
+
+<div align="center">
+<img src="docs/_static/zhihu_qrcode.jpg" height="400" />  <img src="docs/_static/qq_group_qrcode.jpg" height="400" />
+</div>
+
+我们会在 OpenMMLab 社区为大家
+
+- 📢 分享 AI 框架的前沿核心技术
+- 💻 解读 PyTorch 常用模块源码
+- 📰 发布 OpenMMLab 的相关新闻
+- 🚀 介绍 OpenMMLab 开发的前沿算法
+- 🏃 获取更高效的问题答疑和意见反馈
+- 🔥 提供与各行各业开发者充分交流的平台
+
+干货满满 📘，等你来撩 💗，OpenMMLab 社区期待您的加入 👬

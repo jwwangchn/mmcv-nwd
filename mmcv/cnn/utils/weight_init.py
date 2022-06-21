@@ -1,6 +1,12 @@
 # Copyright (c) Open-MMLab. All rights reserved.
+import copy
+import math
+import warnings
+
 import numpy as np
+import torch
 import torch.nn as nn
+from torch import Tensor
 
 from mmcv.utils import Registry, build_from_cfg, get_logger, print_log
 
@@ -30,6 +36,18 @@ def normal_init(module, mean=0, std=1, bias=0):
         nn.init.normal_(module.weight, mean, std)
     if hasattr(module, 'bias') and module.bias is not None:
         nn.init.constant_(module.bias, bias)
+
+
+def trunc_normal_init(module: nn.Module,
+                      mean: float = 0,
+                      std: float = 1,
+                      a: float = -2,
+                      b: float = 2,
+                      bias: float = 0) -> None:
+    if hasattr(module, 'weight') and module.weight is not None:
+        trunc_normal_(module.weight, mean, std, a, b)  # type: ignore
+    if hasattr(module, 'bias') and module.bias is not None:
+        nn.init.constant_(module.bias, bias)  # type: ignore
 
 
 def uniform_init(module, a=0, b=1, bias=0):
@@ -70,16 +88,21 @@ def caffe2_xavier_init(module, bias=0):
 
 
 def bias_init_with_prob(prior_prob):
-    """initialize conv/fc bias value according to giving probability."""
+    """initialize conv/fc bias value according to a given probability value."""
     bias_init = float(-np.log((1 - prior_prob) / prior_prob))
     return bias_init
+
+
+def _get_bases_name(m):
+    return [b.__name__ for b in m.__class__.__bases__]
 
 
 class BaseInit(object):
 
     def __init__(self, *, bias=0, bias_prob=None, layer=None):
+        self.wholemodule = False
         if not isinstance(bias, (int, float)):
-            raise TypeError(f'bias must be a numbel, but got a {type(bias)}')
+            raise TypeError(f'bias must be a number, but got a {type(bias)}')
 
         if bias_prob is not None:
             if not isinstance(bias_prob, float):
@@ -90,7 +113,11 @@ class BaseInit(object):
             if not isinstance(layer, (str, list)):
                 raise TypeError(f'layer must be a str or a list of str, \
                     but got a {type(layer)}')
-
+        else:
+            layer = []
+            warnings.warn(
+                'init_cfg without layer key, if you do not define override'
+                ' key either, this init_cfg will do nothing')
         if bias_prob is not None:
             self.bias = bias_init_with_prob(bias_prob)
         else:
@@ -104,8 +131,7 @@ class ConstantInit(BaseInit):
 
     Args:
         val (int | float): the value to fill the weights in the module with
-        bias (int | float): the value to fill the bias or
-        define initialization type for bias. Defaults to 0.
+        bias (int | float): the value to fill the bias. Defaults to 0.
         bias_prob (float, optional): the probability for bias initialization.
             Defaults to None.
         layer (str | list[str], optional): the layer will be initialized.
@@ -119,13 +145,13 @@ class ConstantInit(BaseInit):
     def __call__(self, module):
 
         def init(m):
-            if self.layer is None:
+            if self.wholemodule:
                 constant_init(m, self.val, self.bias)
             else:
                 layername = m.__class__.__name__
-                for layer_ in self.layer:
-                    if layername == layer_:
-                        constant_init(m, self.val, self.bias)
+                basesname = _get_bases_name(m)
+                if len(set(self.layer) & set([layername] + basesname)):
+                    constant_init(m, self.val, self.bias)
 
         module.apply(init)
 
@@ -139,8 +165,7 @@ class XavierInit(BaseInit):
 
     Args:
         gain (int | float): an optional scaling factor. Defaults to 1.
-        bias (int | float): the value to fill the bias or define
-            initialization type for bias. Defaults to 0.
+        bias (int | float): the value to fill the bias. Defaults to 0.
         bias_prob (float, optional): the probability for bias initialization.
             Defaults to None.
         distribution (str): distribution either be ``'normal'``
@@ -157,13 +182,13 @@ class XavierInit(BaseInit):
     def __call__(self, module):
 
         def init(m):
-            if self.layer is None:
+            if self.wholemodule:
                 xavier_init(m, self.gain, self.bias, self.distribution)
             else:
                 layername = m.__class__.__name__
-                for layer_ in self.layer:
-                    if layername == layer_:
-                        xavier_init(m, self.gain, self.bias, self.distribution)
+                basesname = _get_bases_name(m)
+                if len(set(self.layer) & set([layername] + basesname)):
+                    xavier_init(m, self.gain, self.bias, self.distribution)
 
         module.apply(init)
 
@@ -177,8 +202,7 @@ class NormalInit(BaseInit):
         mean (int | float):the mean of the normal distribution. Defaults to 0.
         std (int | float): the standard deviation of the normal distribution.
             Defaults to 1.
-        bias (int | float): the value to fill the bias or define
-            initialization type for bias. Defaults to 0.
+        bias (int | float): the value to fill the bias. Defaults to 0.
         bias_prob (float, optional): the probability for bias initialization.
             Defaults to None.
         layer (str | list[str], optional): the layer will be initialized.
@@ -194,13 +218,61 @@ class NormalInit(BaseInit):
     def __call__(self, module):
 
         def init(m):
-            if self.layer is None:
+            if self.wholemodule:
                 normal_init(m, self.mean, self.std, self.bias)
             else:
                 layername = m.__class__.__name__
-                for layer_ in self.layer:
-                    if layername == layer_:
-                        normal_init(m, self.mean, self.std, self.bias)
+                basesname = _get_bases_name(m)
+                if len(set(self.layer) & set([layername] + basesname)):
+                    normal_init(m, self.mean, self.std, self.bias)
+
+        module.apply(init)
+
+
+@INITIALIZERS.register_module(name='TruncNormal')
+class TruncNormalInit(BaseInit):
+    r"""Initialize module parameters with the values drawn from the normal
+    distribution :math:`\mathcal{N}(\text{mean}, \text{std}^2)` with values
+    outside :math:`[a, b]`.
+
+    Args:
+        mean (float): the mean of the normal distribution. Defaults to 0.
+        std (float):  the standard deviation of the normal distribution.
+            Defaults to 1.
+        a (float): The minimum cutoff value.
+        b ( float): The maximum cutoff value.
+        bias (float): the value to fill the bias. Defaults to 0.
+        bias_prob (float, optional): the probability for bias initialization.
+            Defaults to None.
+        layer (str | list[str], optional): the layer will be initialized.
+            Defaults to None.
+
+    """
+
+    def __init__(self,
+                 mean: float = 0,
+                 std: float = 1,
+                 a: float = -2,
+                 b: float = 2,
+                 **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.mean = mean
+        self.std = std
+        self.a = a
+        self.b = b
+
+    def __call__(self, module: nn.Module) -> None:
+
+        def init(m):
+            if self.wholemodule:
+                trunc_normal_init(m, self.mean, self.std, self.a, self.b,
+                                  self.bias)
+            else:
+                layername = m.__class__.__name__
+                basesname = _get_bases_name(m)
+                if len(set(self.layer) & set([layername] + basesname)):
+                    trunc_normal_init(m, self.mean, self.std, self.a, self.b,
+                                      self.bias)
 
         module.apply(init)
 
@@ -215,8 +287,7 @@ class UniformInit(BaseInit):
             Defaults to 0.
         b (int | float): the upper bound of the uniform distribution.
             Defaults to 1.
-        bias (int | float): the value to fill the bias or define
-            initialization type for bias. Defaults to 0.
+        bias (int | float): the value to fill the bias. Defaults to 0.
         bias_prob (float, optional): the probability for bias initialization.
             Defaults to None.
         layer (str | list[str], optional): the layer will be initialized.
@@ -231,13 +302,13 @@ class UniformInit(BaseInit):
     def __call__(self, module):
 
         def init(m):
-            if self.layer is None:
+            if self.wholemodule:
                 uniform_init(m, self.a, self.b, self.bias)
             else:
                 layername = m.__class__.__name__
-                for layer_ in self.layer:
-                    if layername == layer_:
-                        uniform_init(m, self.a, self.b, self.bias)
+                basesname = _get_bases_name(m)
+                if len(set(self.layer) & set([layername] + basesname)):
+                    uniform_init(m, self.a, self.b, self.bias)
 
         module.apply(init)
 
@@ -260,8 +331,7 @@ class KaimingInit(BaseInit):
         nonlinearity (str): the non-linear function (`nn.functional` name),
             recommended to use only with ``'relu'`` or ``'leaky_relu'`` .
             Defaults to 'relu'.
-        bias (int | float): the value to fill the bias or define
-            initialization type for bias. Defaults to 0.
+        bias (int | float): the value to fill the bias. Defaults to 0.
         bias_prob (float, optional): the probability for bias initialization.
             Defaults to None.
         distribution (str): distribution either be ``'normal'`` or
@@ -285,17 +355,33 @@ class KaimingInit(BaseInit):
     def __call__(self, module):
 
         def init(m):
-            if self.layer is None:
+            if self.wholemodule:
                 kaiming_init(m, self.a, self.mode, self.nonlinearity,
                              self.bias, self.distribution)
             else:
                 layername = m.__class__.__name__
-                for layer_ in self.layer:
-                    if layername == layer_:
-                        kaiming_init(m, self.a, self.mode, self.nonlinearity,
-                                     self.bias, self.distribution)
+                basesname = _get_bases_name(m)
+                if len(set(self.layer) & set([layername] + basesname)):
+                    kaiming_init(m, self.a, self.mode, self.nonlinearity,
+                                 self.bias, self.distribution)
 
         module.apply(init)
+
+
+@INITIALIZERS.register_module(name='Caffe2Xavier')
+class Caffe2XavierInit(KaimingInit):
+    # `XavierFill` in Caffe2 corresponds to `kaiming_uniform_` in PyTorch
+    # Acknowledgment to FAIR's internal code
+    def __init__(self, **kwargs):
+        super().__init__(
+            a=1,
+            mode='fan_in',
+            nonlinearity='leaky_relu',
+            distribution='uniform',
+            **kwargs)
+
+    def __call__(self, module):
+        super().__call__(module)
 
 
 @INITIALIZERS.register_module(name='Pretrained')
@@ -339,12 +425,16 @@ class PretrainedInit(object):
             load_state_dict(module, state_dict, strict=False, logger=logger)
 
 
-def _initialize(module, cfg):
+def _initialize(module, cfg, wholemodule=False):
     func = build_from_cfg(cfg, INITIALIZERS)
+    # wholemodule flag is for override mode, there is no layer key in override
+    # and initializer will give init values for the whole module with the name
+    # in override.
+    func.wholemodule = wholemodule
     func(module)
 
 
-def _initialize_override(module, override):
+def _initialize_override(module, override, cfg):
     if not isinstance(override, (dict, list)):
         raise TypeError(f'override must be a dict or a list of dict, \
                 but got {type(override)}')
@@ -352,11 +442,26 @@ def _initialize_override(module, override):
     override = [override] if isinstance(override, dict) else override
 
     for override_ in override:
-        name = override_.pop('name', None)
+
+        cp_override = copy.deepcopy(override_)
+        name = cp_override.pop('name', None)
+        if name is None:
+            raise ValueError('`override` must contain the key "name",'
+                             f'but got {cp_override}')
+        # if override only has name kay, it means use args in init_cfg
+        if not cp_override:
+            cp_override.update(cfg)
+        # if override has name key and other args except type key, it will
+        # raise error
+        elif 'type' not in cp_override.keys():
+            raise ValueError(
+                f'`override` need "type" key, but got {cp_override}')
+
         if hasattr(module, name):
-            _initialize(getattr(module, name), override_)
+            _initialize(getattr(module, name), cp_override, wholemodule=True)
         else:
-            raise RuntimeError(f'module did not have attribute {name}')
+            raise RuntimeError(f'module did not have attribute {name}, '
+                               f'but init_cfg is {cp_override}.')
 
 
 def initialize(module, init_cfg):
@@ -368,10 +473,9 @@ def initialize(module, init_cfg):
             define initializer. OpenMMLab has implemented 6 initializers
             including ``Constant``, ``Xavier``, ``Normal``, ``Uniform``,
             ``Kaiming``, and ``Pretrained``.
-
     Example:
         >>> module = nn.Linear(2, 3, bias=True)
-        >>> init_cfg = dict(type='Constant', val =1 , bias =2)
+        >>> init_cfg = dict(type='Constant', layer='Linear', val =1 , bias =2)
         >>> initialize(module, init_cfg)
 
         >>> module = nn.Sequential(nn.Conv1d(3, 1, 3), nn.Linear(1,2))
@@ -381,11 +485,7 @@ def initialize(module, init_cfg):
                 dict(type='Constant', layer='Linear', val=2)]
         >>> initialize(module, init_cfg)
 
-        >>> # Omitting ``'layer'`` initialize module with same configuration
-        >>> init_cfg = dict(type='Constant', val=1, bias=2)
-        >>> initialize(module, init_cfg)
-
-        >>> # define key``'override'`` to initialize some specific override in
+        >>> # define key``'override'`` to initialize some specific part in
         >>> # module
         >>> class FooNet(nn.Module):
         >>>     def __init__(self):
@@ -394,17 +494,17 @@ def initialize(module, init_cfg):
         >>>         self.reg = nn.Conv2d(16, 10, 3)
         >>>         self.cls = nn.Conv2d(16, 5, 3)
         >>> model = FooNet()
-        >>> init_cfg = dict(type='Constant', val=1, bias=2,
+        >>> init_cfg = dict(type='Constant', val=1, bias=2, layer='Conv2d',
         >>>     override=dict(type='Constant', name='reg', val=3, bias=4))
         >>> initialize(model, init_cfg)
 
         >>> model = ResNet(depth=50)
         >>> # Initialize weights with the pretrained model.
-        >>> init_cfg = dict(type='PretrainedInit',
+        >>> init_cfg = dict(type='Pretrained',
                 checkpoint='torchvision://resnet50')
         >>> initialize(model, init_cfg)
 
-        >>> # Intialize weights of a sub-module with the specific part of
+        >>> # Initialize weights of a sub-module with the specific part of
         >>> # a pretrained model by using "prefix".
         >>> url = 'http://download.openmmlab.com/mmdetection/v2.0/retinanet/'\
         >>>     'retinanet_r50_fpn_1x_coco/'\
@@ -420,11 +520,82 @@ def initialize(module, init_cfg):
         init_cfg = [init_cfg]
 
     for cfg in init_cfg:
-        override = cfg.pop('override', None)
-        _initialize(module, cfg)
+        # should deeply copy the original config because cfg may be used by
+        # other modules, e.g., one init_cfg shared by multiple bottleneck
+        # blocks, the expected cfg will be changed after pop and will change
+        # the initialization behavior of other modules
+        cp_cfg = copy.deepcopy(cfg)
+        override = cp_cfg.pop('override', None)
+        _initialize(module, cp_cfg)
 
         if override is not None:
-            _initialize_override(module, override)
+            cp_cfg.pop('layer', None)
+            _initialize_override(module, override, cp_cfg)
         else:
             # All attributes in module have same initialization.
             pass
+
+
+def _no_grad_trunc_normal_(tensor: Tensor, mean: float, std: float, a: float,
+                           b: float) -> Tensor:
+    # Method based on
+    # https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
+    # Modified from
+    # https://github.com/pytorch/pytorch/blob/master/torch/nn/init.py
+    def norm_cdf(x):
+        # Computes standard normal cumulative distribution function
+        return (1. + math.erf(x / math.sqrt(2.))) / 2.
+
+    if (mean < a - 2 * std) or (mean > b + 2 * std):
+        warnings.warn(
+            'mean is more than 2 std from [a, b] in nn.init.trunc_normal_. '
+            'The distribution of values may be incorrect.',
+            stacklevel=2)
+
+    with torch.no_grad():
+        # Values are generated by using a truncated uniform distribution and
+        # then using the inverse CDF for the normal distribution.
+        # Get upper and lower cdf values
+        lower = norm_cdf((a - mean) / std)
+        upper = norm_cdf((b - mean) / std)
+
+        # Uniformly fill tensor with values from [lower, upper], then translate
+        # to [2lower-1, 2upper-1].
+        tensor.uniform_(2 * lower - 1, 2 * upper - 1)
+
+        # Use inverse cdf transform for normal distribution to get truncated
+        # standard normal
+        tensor.erfinv_()
+
+        # Transform to proper mean, std
+        tensor.mul_(std * math.sqrt(2.))
+        tensor.add_(mean)
+
+        # Clamp to ensure it's in the proper range
+        tensor.clamp_(min=a, max=b)
+        return tensor
+
+
+def trunc_normal_(tensor: Tensor,
+                  mean: float = 0.,
+                  std: float = 1.,
+                  a: float = -2.,
+                  b: float = 2.) -> Tensor:
+    r"""Fills the input Tensor with values drawn from a truncated
+    normal distribution. The values are effectively drawn from the
+    normal distribution :math:`\mathcal{N}(\text{mean}, \text{std}^2)`
+    with values outside :math:`[a, b]` redrawn until they are within
+    the bounds. The method used for generating the random values works
+    best when :math:`a \leq \text{mean} \leq b`.
+
+    Modified from
+    https://github.com/pytorch/pytorch/blob/master/torch/nn/init.py
+
+    Args:
+        tensor (``torch.Tensor``): an n-dimensional `torch.Tensor`.
+        mean (float): the mean of the normal distribution.
+        std (float): the standard deviation of the normal distribution.
+        a (float): the minimum cutoff value.
+        b (float): the maximum cutoff value.
+    """
+    return _no_grad_trunc_normal_(tensor, mean, std, a, b)
